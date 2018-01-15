@@ -1,3 +1,5 @@
+package com.lithium.a11y;
+
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
@@ -71,9 +73,17 @@ public class BaseTest {
         }
     }
 
-    public static void doLoginFromCommunityAdmin() {
+    public static void doLoginFromCommunityAdmin(WebDriver driver) {
 
         //Reuse from mineraloil-lia
+        if (driver.findElements(By.name("login")).size() > 0 && driver.findElements(By.name("password")).size() > 0){
+            driver.findElement(By.name("login")).sendKeys(BaseTest.USER);
+            driver.findElement(By.name("password")).sendKeys(BaseTest.PASS);
+            driver.findElement(By.xpath("//input[@value='Sign In']")).click();
+
+            new WebDriverWait(driver, 40).until(ExpectedConditions.visibilityOf(driver.findElement(By.linkText("soumenp"))));
+        }
+
     }
 
     public static void checkForAttributeinHTML(WebDriver driver, String attr, boolean shouldExist) {

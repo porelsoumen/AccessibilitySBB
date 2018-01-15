@@ -1,23 +1,10 @@
-/**
- * Copyright (C) 2015 Deque Systems Inc.,
- *
- * Your use of this Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/.
- *
- * This entire copyright notice must appear in every copy of this file you
- * distribute or in any file that contains substantial portions of this source
- * code.
- */
-
+import com.lithium.a11y.BaseTest;
 import com.google.common.base.Predicate;
 import org.apache.commons.validator.routines.UrlValidator;
-import org.openqa.selenium.By;
-import org.openqa.selenium.JavascriptExecutor;
-import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.WebElement;
+import org.openqa.selenium.*;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.testng.Assert;
+import org.testng.Reporter;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.DataProvider;
@@ -86,7 +73,7 @@ public class IdentifyA11yViolationsSBB {
 
 		for (int v = 0; v < webElements.size(); v++) {
 			System.out.println("src: " + webElements.get(v).getAttribute("src"));
-
+			Reporter.log("src: " + webElements.get(v).getAttribute("src"));
 		}
 		Assert.assertEquals(webElements.size(), 0);
 	}
@@ -126,33 +113,39 @@ public class IdentifyA11yViolationsSBB {
 		List<WebElement> webElements;
 
 		// Search for anchor tags that same href value
-		webElements = driver.findElements(By.xpath("//a[@href and contains(@class, 'lia-link-navigation') and not(contains(@class, 'addthis_button_'))] "));
+		webElements = driver.findElements(By.xpath("//a[@href and contains(@class, 'lia-link-navigation') and not(contains(@class, 'addthis_button_')) and not(contains(@class, 'lia-component-search-action-disable-auto-complete'))]"));
 
 		Map<String, Integer> linkDestinations = new HashMap<>();
 		for (int v = 0; v < webElements.size(); v++) {
-			if (linkDestinations.containsKey(webElements.get(v).getAttribute("href"))) {
-				linkDestinations.put(webElements.get(v).getAttribute("href"), linkDestinations.get(webElements.get(v).getAttribute("href")) + 1);
-			} else {
-				linkDestinations.put(webElements.get(v).getAttribute("href"), 1);
+			if (!webElements.get(v).getAttribute("href").contains("url")) {
+				if (linkDestinations.containsKey(webElements.get(v).getAttribute("href"))) {
+					linkDestinations.put(webElements.get(v).getAttribute("href"), linkDestinations.get(webElements.get(v).getAttribute("href")) + 1);
+				} else {
+					linkDestinations.put(webElements.get(v).getAttribute("href"), 1);
+				}
 			}
 		}
 
 		String link = null;
 		String link2 = null;
+		boolean didFail = false;
 		for (Map.Entry<String, Integer> entries : linkDestinations.entrySet()) {
 
 			if (entries.getValue() > 1) {
 				link = entries.getKey();
-
+				didFail = true;
 				if (link.contains("/t5/"))
 					link2 = link.substring(link.indexOf("/t5"), link.length());
 				else
 					link2 = link.substring(link.lastIndexOf("."), link.length());
 
 				System.out.println(link2);
+				Reporter.log(link2);
 			}
-			Assert.assertTrue(entries.getValue() == 0);
 		}
+
+		if (didFail)
+			Assert.fail("Possibility of image link");
 	}
 
 	@Test(dataProvider = "urlProvider")
@@ -166,10 +159,16 @@ public class IdentifyA11yViolationsSBB {
 
 		BaseTest.doLoginWithUserAndPasswd(driver);
 
-		// Search for text "Skip" in the page source
-		System.out.println(driver.getPageSource().contains("Skip") ? "This url has a Skip Navigation Link" : "This url does not have a Skip Navigation Link");
+		// Search for links with text "Skip"
+		List<WebElement> webElements = driver.findElements(By.partialLinkText("Skip to"));
 
-		Assert.assertTrue(driver.getPageSource().contains("Skip"));
+		System.out.println("Number of skip link: " + webElements.size());
+
+		for (int v = 0; v < webElements.size(); v++) {
+			System.out.println("src: " + webElements.get(v).getAttribute("src"));
+		}
+
+		Assert.assertTrue(webElements.size() > 0);
 	}
 
 	@Test(dataProvider = "urlProvider")
@@ -188,7 +187,7 @@ public class IdentifyA11yViolationsSBB {
 	}
 
 	@Test(dataProvider = "urlProvider")
-	public void checkForFontAttributeInHTML(String url) {
+	public void checkForFontElement(String url) {
 
 		System.out.println(host + url);
 		driver.get(host + url);
@@ -198,9 +197,17 @@ public class IdentifyA11yViolationsSBB {
 
 		BaseTest.doLoginWithUserAndPasswd(driver);
 
-		// Search for elements with font-size attribute
-		BaseTest.checkForAttributeinHTML(driver, "font-size", false);
+		// Search for font elements
+		List<WebElement> webElements = driver.findElements(By.xpath("//font"));
 
+		System.out.println("Number of violations: " + webElements.size());
+
+		for (int v = 0; v < webElements.size(); v++) {
+			System.out.println("src: " + webElements.get(v).getAttribute("src"));
+			Reporter.log("src: " + webElements.get(v).getAttribute("src"));
+		}
+
+		Assert.assertEquals(webElements.size(), 0);
 	}
 
 	@Test(dataProvider = "urlProvider")
@@ -228,14 +235,17 @@ public class IdentifyA11yViolationsSBB {
 			}
 		}
 
+		boolean didFail = false;
 		for (Map.Entry<String, Integer> entries : elementsWithId.entrySet()) {
 
 			if (entries.getValue() > 1) {
+				didFail = true;
+				System.out.println("id: " + entries.getKey() + " value: " + entries.getValue());
 
-				System.out.println("id: " + entries.getKey());
-				Assert.fail();
 			}
 		}
+
+		if (didFail) Assert.fail("Possible Duplicate ids");
 	}
 
 	@Test(dataProvider = "urlProvider")
@@ -249,33 +259,52 @@ public class IdentifyA11yViolationsSBB {
 
 		BaseTest.doLoginWithUserAndPasswd(driver);
 
-		List<WebElement> webElements;
+		List<WebElement> elements;
 
 		// Search for anchor tags that same href value
-		webElements = driver.findElements(By.xpath("//a[@href and contains(@class, 'lia-link-navigation') and not(contains(@class, 'addthis_button_'))]"));
+		elements = driver.findElements(By.xpath("//a[@href and contains(@class, 'lia-link-navigation')]"));
 
-		Map<String, String> linkDestinations = new HashMap<>();
-		for (int v = 0; v < webElements.size(); v++) {
-			linkDestinations.put(webElements.get(v).getAttribute("href"), linkDestinations.get(webElements.get(v).getText()));
+		Map<String, Map<String, String>> linkToTextMap = new HashMap<>();
+		Map<String, Map<String, String>> textToLinkMap = new HashMap<>();
+
+		for (int index = 0; index < elements.size(); index++) {
+
+			WebElement element = elements.get(index);
+			String text = element.getText();
+			String link = element.getAttribute("href");
+
+			Map<String, String> textValues;
+			if (!linkToTextMap.containsKey(link)) {
+				textValues = new HashMap<>();
+				linkToTextMap.put(link, textValues);
+			} else {
+				textValues = linkToTextMap.get(link);
+			}
+			textValues.put(text, element.getTagName() + "[text=" + text  +"]");
+
+			Map<String, String> linkValues;
+			if (!textToLinkMap.containsKey(text)) {
+				linkValues = new HashMap<>();
+				textToLinkMap.put(text, linkValues);
+			} else {
+				linkValues = textToLinkMap.get(text);
+			}
+			linkValues.put(link, element.getTagName() + "[text=" + text  +"]");
 		}
 
-		Map<String, Integer> sameHrefDiffText = new HashMap<>();
-		Map<String, Integer> diffHrefSameText = new HashMap<>();
-
-		for (String href : linkDestinations.keySet()) {
-			if (sameHrefDiffText.containsKey(href))
-				sameHrefDiffText.put(href, sameHrefDiffText.get(href) + 1);
-			else
-				sameHrefDiffText.put(href, 1);
+		for (Map.Entry<String, Map<String, String>> entry : linkToTextMap.entrySet()) {
+			Map<String, String> texts = entry.getValue();
+			if (texts.size() > 1) {
+				System.out.println("href: " + entry.getKey() + " || text: " + entry.getValue());
+			}
 		}
 
-		for (String text : linkDestinations.values()) {
-			if (diffHrefSameText.containsKey(text))
-				diffHrefSameText.put(text, diffHrefSameText.get(text) + 1);
-			else
-				diffHrefSameText.put(text, 1);
+		for (Map.Entry<String, Map<String, String>> entry : textToLinkMap.entrySet()) {
+			Map<String, String> links = entry.getValue();
+			if (links.size() > 1) {
+				System.out.println("text: " + entry.getKey() + " || link: " + entry.getValue());
+			}
 		}
-
 	}
 
 	@Test(dataProvider = "urlProvider")
@@ -290,14 +319,14 @@ public class IdentifyA11yViolationsSBB {
 		BaseTest.doLoginWithUserAndPasswd(driver);
 
 		// Search for elements using bold or italic tag
-		List<WebElement> boldElements = driver.findElements(By.xpath("//b"));
-		List<WebElement> italicElements = driver.findElements(By.xpath("//i"));
+		//List<WebElement> boldElements = driver.findElements(By.xpath("//b"));
+		List<WebElement> italicElements = driver.findElements(By.xpath("//i[contains(@class, 'lia-message-stats-icon')]"));
 
-		System.out.println("Bold elements: " + boldElements.size());
-		for (int instance = 0; instance < boldElements.size(); instance++) {
-
-			System.out.println(boldElements.get(instance).getText());
-		}
+//		System.out.println("Bold elements: " + boldElements.size());
+//		for (int instance = 0; instance < boldElements.size(); instance++) {
+//
+//			System.out.println(boldElements.get(instance).getText());
+//		}
 
 		System.out.println("Italic elements: " + italicElements.size());
 		for (int instance = 0; instance < italicElements.size(); instance++) {
@@ -305,7 +334,7 @@ public class IdentifyA11yViolationsSBB {
 			System.out.println(italicElements.get(instance).getText());
 		}
 
-		Assert.assertEquals(boldElements.size(), 0);
+		//Assert.assertEquals(boldElements.size(), 0);
 		Assert.assertEquals(italicElements.size(), 0);
 	}
 
@@ -320,32 +349,31 @@ public class IdentifyA11yViolationsSBB {
 
 		BaseTest.doLoginWithUserAndPasswd(driver);
 
-		// Search for elements using bold or italic tag
-		List<WebElement> defListElements = driver.findElements(By.xpath("//dl"));
+		// Search for ol and ul elements
 		List<WebElement> unorderListElements = driver.findElements(By.xpath("//ul"));
 		List<WebElement> orderListElements = driver.findElements(By.xpath("//ol"));
 
-		System.out.println("Empty Definition List elements: " + defListElements.size());
-		for (int instance = 0; instance < defListElements.size(); instance++) {
+		System.out.print("Empty Unordered List elements: ");
+		int noOfEmptyUnorderedElements=0;
 
-			System.out.println(defListElements.get(instance).getText());
+		for(WebElement web : unorderListElements ){
+			List<WebElement> liList = web.findElements(By.tagName("li"));
+			if (liList.size() == 0)
+				noOfEmptyUnorderedElements++;
 		}
+		System.out.println(noOfEmptyUnorderedElements);
 
-		System.out.println("Empty Unordered List elements: " + unorderListElements.size());
-		for (int instance = 0; instance < unorderListElements.size(); instance++) {
-
-			System.out.println(unorderListElements.get(instance).getText());
+		System.out.print("Empty Oordered List elements: ");
+		int noOfEmptyOrderedElements=0;
+		for(WebElement web : orderListElements ){
+			List<WebElement> liList = web.findElements(By.tagName("li"));
+			if (liList.size() == 0)
+				noOfEmptyOrderedElements++;
 		}
+		System.out.println(noOfEmptyOrderedElements);
 
-		System.out.println("Empty Ordered List elements: " + orderListElements.size());
-		for (int instance = 0; instance < orderListElements.size(); instance++) {
-
-			System.out.println(orderListElements.get(instance).getText());
-		}
-
-		Assert.assertEquals(defListElements.size(), 0);
-		Assert.assertEquals(unorderListElements.size(), 0);
-		Assert.assertEquals(orderListElements.size(), 0);
+		Assert.assertEquals(noOfEmptyUnorderedElements, 0);
+		Assert.assertEquals(noOfEmptyOrderedElements, 0);
 	}
 
 	@Test(dataProvider = "urlProvider")
@@ -389,7 +417,6 @@ public class IdentifyA11yViolationsSBB {
 				Assert.fail();
 			}
 		}
-
 	}
 
 	@Test(dataProvider = "urlProvider")
@@ -472,7 +499,7 @@ public class IdentifyA11yViolationsSBB {
 			BaseTest.doLoginWithUserAndPasswd(driver);
 
 			// Search for center elements
-			List<WebElement> centerElements = driver.findElements(By.xpath("//center"));
+			List<WebElement> centerElements = driver.findElements(By.tagName("center"));
 
 			for (int instance = 0; instance < centerElements.size(); instance++) {
 
@@ -494,11 +521,11 @@ public class IdentifyA11yViolationsSBB {
 			BaseTest.doLoginWithUserAndPasswd(driver);
 
 			// Search for iframe elements with absolute sizing
-			List<WebElement> iframeElements = driver.findElements(By.xpath("//iframe[not(contains(@width, '%')) and not(contains(@height, '%'))]"));
+			List<WebElement> iframeElements = driver.findElements(By.xpath("//iframe[not(contains(@width, '%')) and not(contains(@height, '%')) and not(contains(@src, 'https://staticxx.facebook.com/')) and not(contains(@src,'javascript'))]"));
 
 			for (int instance = 0; instance < iframeElements.size(); instance++) {
 
-				System.out.println(iframeElements.get(instance).getText() + iframeElements.get(instance).getAttribute("width"));
+				System.out.println("src: " + iframeElements.get(instance).getAttribute("src") + " width: " + iframeElements.get(instance).getAttribute("width") + " height: " + iframeElements.get(instance).getAttribute("height"));
 			}
 
 			Assert.assertEquals(iframeElements.size(), 0);
@@ -595,7 +622,7 @@ public class IdentifyA11yViolationsSBB {
 
 			System.out.println("onclick attribute elements: " + onclickAttrElements.size());
 			for (WebElement element: onclickAttrElements) {
-				System.out.println("Tag: " + element.getTagName() + " onclick: " + element.getAttribute("onclick"));
+				System.out.println("Tag: <" + element.getTagName() + "> onclick: " + element.getAttribute("onclick"));
 			}
 
 			Assert.assertEquals(onclickAttrElements.size(), 0);
@@ -617,10 +644,177 @@ public class IdentifyA11yViolationsSBB {
 
 			System.out.println("Links with target _blank: " + blankTargetLinkElements.size());
 			for (WebElement element: blankTargetLinkElements) {
-				System.out.println("Tag: " + element.getTagName() + " text: " + element.getText() + " target: " + element.getAttribute("target"));
+				System.out.println("Tag: <" + element.getTagName() + "> text: " + element.getText() + "|| target: " + element.getAttribute("target"));
 			}
 
 			Assert.assertEquals(blankTargetLinkElements.size(), 0);
+	}
+
+	@Test(dataProvider = "urlProvider")
+	public void checkSpanWithRoleImg(String url) {
+
+		System.out.println(host + url);
+		driver.get(host + url);
+
+		new WebDriverWait(driver, 60).until(
+				(Predicate<WebDriver>) webDriver -> ((JavascriptExecutor) driver).executeScript("return document.readyState").equals("complete"));
+
+
+		if (driver.getPageSource().contains("An unexpected application exception has occurred.")) {
+			Assert.fail("Exception occured for url: " + url);
+		}
+		else {
+			BaseTest.doLoginFromCommunityAdmin(driver);
+
+			// Search for links with empty link text
+			List<WebElement> spanImageElements = driver.findElements(By.xpath("//span[contains(@class, 'lia-fa') and not(@aria-label) and not(@role='img')]"));
+			List<WebElement> spanElementsWithoutRole = new ArrayList<>();
+
+			System.out.println("Span elements without role: " + spanImageElements.size());
+			for (WebElement element: spanImageElements) {
+				System.out.println("class: " + element.getAttribute("class"));
+			}
+
+			Assert.assertEquals(spanImageElements.size(), 0);
+		}
+	}
+
+	@Test(dataProvider = "urlProvider")
+	public void checkSpanWithoutAriaLabel(String url) {
+
+		System.out.println(host + url);
+		driver.get(host + url);
+
+		new WebDriverWait(driver, 60).until(
+				(Predicate<WebDriver>) webDriver -> ((JavascriptExecutor) driver).executeScript("return document.readyState").equals("complete"));
+
+
+		if (driver.getPageSource().contains("An unexpected application exception has occurred.")) {
+			Assert.fail("Exception occured for url: " + url);
+		}
+		else {
+			BaseTest.doLoginFromCommunityAdmin(driver);
+
+			// Search for links with empty link text
+			List<WebElement> postWithMostLikesHeadingElements = driver.findElements(By.xpath("//span[not(@aria-label) and contains(@class, 'lia-fa')]"));
+			List<WebElement> spanElementsWithoutRole = new ArrayList<>();
+
+			System.out.println("Headings: " + postWithMostLikesHeadingElements.size());
+			for (WebElement element: postWithMostLikesHeadingElements) {
+				System.out.println("class: " + element.getAttribute("class"));
+			}
+
+			Assert.assertEquals(postWithMostLikesHeadingElements.size(), 0);
+		}
+	}
+
+	@Test(dataProvider = "urlProvider")
+	public void checkTableAccessibility(String url) {
+
+		System.out.println(host + url);
+		driver.get(host + url);
+
+		new WebDriverWait(driver, 60).until(
+				(Predicate<WebDriver>) webDriver -> ((JavascriptExecutor) driver).executeScript("return document.readyState").equals("complete"));
+
+
+		if (driver.getPageSource().contains("An unexpected application exception has occurred.")) {
+			Assert.fail("Exception occured for url: " + url);
+		}
+		else {
+			BaseTest.doLoginWithUserAndPasswd(driver);
+
+			// Search for links with empty link text
+			List<WebElement> allTableElementsList = driver.findElements(By.xpath("//table"));
+			List<WebElement> liaListSlimTablesList = driver.findElements(By.xpath("//table[@class='lia-list-slim']"));
+
+			System.out.println("All tables: " + allTableElementsList.size());
+			for (WebElement element: allTableElementsList) {
+				System.out.println("class: " + element.getAttribute("class"));
+			}
+
+			System.out.println("Slim tables: " + liaListSlimTablesList.size());
+			for (WebElement element: liaListSlimTablesList) {
+				System.out.println("class: " + element.getAttribute("class"));
+			}
+
+			//Assert.assertEquals(allTableElementsList.size(), 0);
+		}
+	}
+
+	@Test(dataProvider = "urlProvider")
+	public void checkDescriptivePageTitle(String url) {
+
+		System.out.println(host + url);
+		driver.get(host + url);
+
+		new WebDriverWait(driver, 60).until(
+				(Predicate<WebDriver>) webDriver -> ((JavascriptExecutor) driver).executeScript("return document.readyState").equals("complete"));
+
+
+		if (driver.getPageSource().contains("An unexpected application exception has occurred.")) {
+			Assert.fail("Exception occured for url: " + url);
+		}
+		else {
+			BaseTest.doLoginWithUserAndPasswd(driver);
+
+			String pageTitle = driver.getTitle();
+
+			System.out.println("title: " + pageTitle);
+		}
+	}
+
+	@Test(dataProvider = "urlProvider")
+	public void checkAbbreviations(String url) {
+
+		System.out.println(host + url);
+		driver.get(host + url);
+
+		new WebDriverWait(driver, 60).until(
+				(Predicate<WebDriver>) webDriver -> ((JavascriptExecutor) driver).executeScript("return document.readyState").equals("complete"));
+
+
+		if (driver.getPageSource().contains("An unexpected application exception has occurred.")) {
+			Assert.fail("Exception occured for url: " + url);
+		}
+		else {
+			BaseTest.doLoginWithUserAndPasswd(driver);
+
+			List<WebElement> webElements = driver.findElements(By.partialLinkText("(EN)"));
+			List<WebElement> webElements2 = driver.findElements(By.xpath("//span[contains(@class, 'lia-breadcrumb-forum')]"));
+
+			if (!webElements.isEmpty())
+				System.out.println("text: " + webElements.get(0).getText() + " href: " + webElements.get(0).getAttribute("href"));
+
+			if (!webElements2.isEmpty())
+				System.out.println("text: " + webElements2.get(0).getText() + " href: " + webElements2.get(0).getAttribute("href"));
+
+			if (!webElements.isEmpty() || !webElements2.isEmpty())
+				Assert.fail("Abbreviations present");
+		}
+	}
+
+	@Test(dataProvider = "urlProvider")
+	public void checkNBSPAndFormLabel(String url) {
+
+		System.out.println(host + url);
+		driver.get(host + url);
+
+		new WebDriverWait(driver, 60).until(
+				(Predicate<WebDriver>) webDriver -> ((JavascriptExecutor) driver).executeScript("return document.readyState").equals("complete"));
+
+
+		if (driver.getPageSource().contains("An unexpected application exception has occurred.")) {
+			Assert.fail("Exception occured for url: " + url);
+		}
+		else {
+
+			List<WebElement> webElements = driver.findElements(By.xpath("//div[contains(@class,'lia-component-search-widget-spellcheck)']"));
+
+			if (!webElements.isEmpty()) {
+				Assert.fail("search field present");
+			}
+		}
 	}
 }
 
@@ -628,7 +822,7 @@ class URLDataProvider {
 
 	public static String[][] urlsAsArray() {
 
-		File urlFile = new File(System.getProperty("user.dir") + "/URLs.txt");
+		File urlFile = new File(System.getProperty("user.dir") + "/SBB_URLs.txt");
 		ArrayList<String> urlList = new ArrayList<>();
 		String url;
 
